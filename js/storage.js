@@ -51,9 +51,24 @@
       createdAt: isString(raw.createdAt) ? raw.createdAt : now,
       updatedAt: isString(raw.updatedAt) ? raw.updatedAt : now,
       activatedAt: isString(raw.activatedAt) ? raw.activatedAt : null,
-      lastReviewedAt: isString(raw.lastReviewedAt) ? raw.lastReviewedAt : null
+      lastReviewedAt: isString(raw.lastReviewedAt) ? raw.lastReviewedAt : null,
+      readiness: (raw.readiness === "discovery" || raw.readiness === "delivery") ? raw.readiness : null,
+      rawIdeaText: isString(raw.rawIdeaText) ? raw.rawIdeaText : "",
+      evidenceAudit: sanitizeEvidenceAudit(raw.evidenceAudit)
     };
     return bet;
+  }
+
+  function sanitizeEvidenceAudit(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    return {
+      proposedSolution: isString(raw.proposedSolution) ? raw.proposedSolution : "",
+      claimedOutcome: isString(raw.claimedOutcome) ? raw.claimedOutcome : "",
+      evidenceGiven: isString(raw.evidenceGiven) ? raw.evidenceGiven : "",
+      missing: Array.isArray(raw.missing) ? raw.missing.filter(isString) : [],
+      alternativeExplanation: isString(raw.alternativeExplanation) ? raw.alternativeExplanation : "",
+      recommendation: isString(raw.recommendation) ? raw.recommendation : ""
+    };
   }
 
   function clamp05(n) {

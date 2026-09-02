@@ -17,6 +17,7 @@
 
   // Transient UI state (not persisted)
   var betsView = { status: "all", search: "", sort: "signal" };
+  var currentGateAnalysis = null;
 
   // ================= CORE HELPERS =================
 
@@ -78,7 +79,7 @@
   function render() {
     var parsed = parseHash();
     var route = parsed.route;
-    var validRoutes = ["dashboard", "bets", "bet", "council", "logs", "how-it-works"];
+    var validRoutes = ["dashboard", "bets", "bet", "council", "logs", "how-it-works", "evidence-gate"];
     if (validRoutes.indexOf(route) === -1) route = "dashboard";
 
     ui.setActiveNav(route === "bet" ? "bets" : route);
@@ -103,6 +104,10 @@
         break;
       case "how-it-works":
         appRoot.innerHTML = renderHowItWorks();
+        break;
+      case "evidence-gate":
+        appRoot.innerHTML = renderEvidenceGate();
+        wireEvidenceGateEvents();
         break;
       default:
         appRoot.innerHTML = renderDashboard();
@@ -135,7 +140,7 @@
       '<article class="card bet-card">' +
         '<div class="bet-card__top">' +
           '<h3 class="bet-card__title">' + esc(bet.title || "Untitled bet") + "</h3>" +
-          ui.statusBadgeHTML(bet.status) +
+          '<span class="bet-card__badges">' + ui.statusBadgeHTML(bet.status) + readinessBadgeHTML(bet.readiness) + "</span>" +
         "</div>" +
         '<p class="bet-card__problem">' + esc(problemPreview) + "</p>" +
         '<div class="bet-card__meta">' +
@@ -474,7 +479,7 @@
       '<header class="page-header">' +
         '<div>' +
           '<h1 class="page-title">' + esc(bet.title || "Untitled bet") + "</h1>" +
-          '<div class="page-header__badges">' + ui.statusBadgeHTML(bet.status) + "</div>" +
+          '<div class="page-header__badges">' + ui.statusBadgeHTML(bet.status) + readinessBadgeHTML(bet.readiness) + "</div>" +
         "</div>" +
       "</header>" +
       '<div class="action-row">' + actionButtons.join("") + "</div>" +
@@ -505,6 +510,38 @@
             '<button type="button" class="btn btn--secondary btn--small" data-action="copy-brief" data-id="' + esc(bet.id) + '">Copy Bet Brief</button>' +
           "</div>" +
           '<pre class="brief-pre">' + esc(brief) + "</pre>" +
+        "</div>" +
+      "</section>" +
+      evidenceAuditPanelHTML(bet)
+    );
+  }
+
+  function readinessBadgeHTML(readiness) {
+    if (readiness === "discovery") return ' <span class="badge badge--watch">Discovery</span>';
+    if (readiness === "delivery") return ' <span class="badge badge--clear">Delivery</span>';
+    return "";
+  }
+
+  function evidenceAuditPanelHTML(bet) {
+    if (!bet.evidenceAudit) return "";
+    var a = bet.evidenceAudit;
+    var missingHTML = a.missing && a.missing.length
+      ? '<ul class="reason-list">' + a.missing.map(function (m) { return "<li>" + esc(m) + "</li>"; }).join("") + "</ul>"
+      : '<p class="muted small">Nothing flagged as missing.</p>';
+
+    return (
+      '<section class="section">' +
+        '<div class="panel">' +
+          '<h2 class="panel__title">Evidence Gate audit</h2>' +
+          '<p class="muted small">Generated from a rule-based read of the original pasted text, then reviewed and edited by a human before saving. This does not verify truth \u2014 it flags what was stated versus assumed.</p>' +
+          '<div class="detail-grid">' +
+            '<div class="detail-row"><span class="detail-row__label">Claimed outcome</span><span class="detail-row__value">' + esc(a.claimedOutcome || "Not specified.") + "</span></div>" +
+            '<div class="detail-row"><span class="detail-row__label">Evidence given</span><span class="detail-row__value">' + esc(a.evidenceGiven || "Not specified.") + "</span></div>" +
+            '<div class="detail-row"><span class="detail-row__label">Missing</span><span class="detail-row__value">' + missingHTML + "</span></div>" +
+            '<div class="detail-row"><span class="detail-row__label">Alternative explanation</span><span class="detail-row__value">' + esc(a.alternativeExplanation || "Not specified.") + "</span></div>" +
+            '<div class="detail-row"><span class="detail-row__label">Recommended next test</span><span class="detail-row__value">' + esc(a.recommendation || "Not specified.") + "</span></div>" +
+          "</div>" +
+          (bet.rawIdeaText ? '<p class="muted small" style="margin-top:0.9rem;">Original pasted text: \u201c' + esc(bet.rawIdeaText) + '\u201d</p>' : "") +
         "</div>" +
       "</section>"
     );
@@ -671,6 +708,152 @@
     );
   }
 
+  // ================= EVIDENCE GATE =================
+
+  function renderEvidenceGate() {
+    var textValue = currentGateAnalysis ? esc(currentGateAnalysis.rawIdeaText) : "";
+    var analysisHTML = "";
+
+    if (currentGateAnalysis) {
+      var a = currentGateAnalysis;
+      var readinessLabel = a.suggestedReadiness === "delivery"
+        ? "Evidence present — looks closer to delivery-ready"
+        : "Little or no evidence — looks like it needs discovery first";
+      var readinessBadgeClass = a.suggestedReadiness === "delivery" ? "active" : "idea";
+
+      analysisHTML =
+        '<section class="section">' +
+          '<div class="panel">' +
+            '<div class="panel__header-row">' +
+              '<h2 class="panel__title">Evidence Gate analysis</h2>' +
+              '<span class="badge badge--' + readinessBadgeClass + '">' + esc(readinessLabel) + "</span>" +
+            "</div>" +
+            '<p class="muted small">This is a rule-based read of what you pasted, not a verified fact-check or a live AI model in this version. Edit anything below before saving — you decide what\u2019s actually true, the tool only flags what\u2019s unstated.</p>' +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-solution">Proposed solution</label>' +
+              '<input type="text" id="gate-solution" class="input" value="' + esc(a.proposedSolution) + '">' +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-outcome">Claimed outcome</label>' +
+              '<textarea id="gate-outcome" class="input textarea" rows="2">' + esc(a.claimedOutcome) + "</textarea>" +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-evidence">Evidence given</label>' +
+              '<textarea id="gate-evidence" class="input textarea" rows="2">' + esc(a.evidenceGiven) + "</textarea>" +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-missing">Missing <span class="muted small">(one per line)</span></label>' +
+              '<textarea id="gate-missing" class="input textarea" rows="3">' + esc(a.missing.join("\n")) + "</textarea>" +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-alternative">Alternative explanation</label>' +
+              '<textarea id="gate-alternative" class="input textarea" rows="2">' + esc(a.alternativeExplanation) + "</textarea>" +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label" for="gate-recommendation">Recommended next test</label>' +
+              '<textarea id="gate-recommendation" class="input textarea" rows="2">' + esc(a.recommendation) + "</textarea>" +
+            "</div>" +
+            '<div class="action-row">' +
+              '<button type="button" class="btn btn--secondary" id="gate-save-discovery">Save as Discovery Bet</button>' +
+              '<button type="button" class="btn btn--primary" id="gate-save-delivery">Save as Delivery Bet</button>' +
+              '<button type="button" class="btn btn--ghost" id="gate-discard">Discard</button>' +
+            "</div>" +
+          "</div>" +
+        "</section>";
+    }
+
+    return (
+      '<header class="page-header">' +
+        '<div>' +
+          '<h1 class="page-title">Evidence Gate</h1>' +
+          '<p class="page-subtitle">Catch unsupported assumptions before they become roadmap commitments.</p>' +
+        "</div>" +
+      "</header>" +
+      '<section class="section">' +
+        '<div class="panel">' +
+          '<div class="field">' +
+            '<label class="field-label" for="gate-input">Paste an idea, feature request, or customer comment</label>' +
+            '<textarea id="gate-input" class="input textarea textarea--large" rows="5" placeholder="e.g. Add a streak feature. It will make users addicted and improve retention.">' + textValue + "</textarea>" +
+          "</div>" +
+          '<button type="button" class="btn btn--primary" id="gate-analyze-btn">Analyze</button>' +
+          '<p class="muted small gate-disclaimer">This reads your text for evidence, gaps, and stated-vs-assumed claims using a rule-based check — not a live AI model in this version. It cannot verify whether evidence is true; it flags what\u2019s missing so a human can check it.</p>' +
+        "</div>" +
+      "</section>" +
+      analysisHTML
+    );
+  }
+
+  function wireEvidenceGateEvents() {
+    var analyzeBtn = document.getElementById("gate-analyze-btn");
+    if (analyzeBtn) {
+      analyzeBtn.addEventListener("click", function () {
+        var textEl = document.getElementById("gate-input");
+        var text = textEl ? textEl.value : "";
+        if (!text.trim()) {
+          ui.showToast("Paste an idea first.");
+          return;
+        }
+        FDOS.evidenceGate.analyze(text).then(function (result) {
+          currentGateAnalysis = result;
+          render();
+        });
+      });
+    }
+
+    var discoveryBtn = document.getElementById("gate-save-discovery");
+    if (discoveryBtn) {
+      discoveryBtn.addEventListener("click", function () { saveFromEvidenceGate("discovery"); });
+    }
+
+    var deliveryBtn = document.getElementById("gate-save-delivery");
+    if (deliveryBtn) {
+      deliveryBtn.addEventListener("click", function () { saveFromEvidenceGate("delivery"); });
+    }
+
+    var discardBtn = document.getElementById("gate-discard");
+    if (discardBtn) {
+      discardBtn.addEventListener("click", function () {
+        currentGateAnalysis = null;
+        render();
+      });
+    }
+  }
+
+  function saveFromEvidenceGate(readiness) {
+    if (!currentGateAnalysis) return;
+
+    var solution = (document.getElementById("gate-solution") || {}).value || currentGateAnalysis.proposedSolution;
+    var outcome = (document.getElementById("gate-outcome") || {}).value || "";
+    var evidenceGiven = (document.getElementById("gate-evidence") || {}).value || "";
+    var missingRaw = (document.getElementById("gate-missing") || {}).value || "";
+    var alternative = (document.getElementById("gate-alternative") || {}).value || "";
+    var recommendation = (document.getElementById("gate-recommendation") || {}).value || "";
+    var missingList = missingRaw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+
+    pendingEvidenceGateData = {
+      rawIdeaText: currentGateAnalysis.rawIdeaText,
+      readiness: readiness,
+      evidenceAudit: {
+        proposedSolution: solution,
+        claimedOutcome: outcome,
+        evidenceGiven: evidenceGiven,
+        missing: missingList,
+        alternativeExplanation: alternative,
+        recommendation: recommendation
+      }
+    };
+
+    openBetFormModal(null, {
+      title: solution,
+      problem: currentGateAnalysis.rawIdeaText,
+      hypothesis: outcome,
+      successMetric: "",
+      owner: "",
+      reviewDate: "",
+      progressNote: ""
+    });
+  }
+
   // ================= BET FORM MODAL =================
 
   var SCORE_FIELDS = [
@@ -682,8 +865,10 @@
     { key: "reversibility", label: "Reversibility", hint: "How easy is it to undo if we are wrong?" }
   ];
 
+  var pendingEvidenceGateData = null; // { rawIdeaText, evidenceAudit, readiness } stashed before opening a prefilled bet form
+
   function betFormFieldsHTML(bet) {
-    function val(key) { return bet && bet[key] !== undefined ? bet[key] : ""; }
+    function val(key) { return bet && bet[key] !== undefined && bet[key] !== null ? bet[key] : ""; }
     function scoreVal(key) { return bet && typeof bet[key] === "number" ? bet[key] : 0; }
 
     return (
@@ -776,15 +961,16 @@
     if (inputEl) inputEl.classList.toggle("input--invalid", !!message);
   }
 
-  function openBetFormModal(bet) {
+  function openBetFormModal(bet, prefill) {
     var isEdit = !!bet;
+    var displayValues = bet || prefill || null;
     var title = isEdit ? "Edit bet" : "Add a bet";
 
     var html =
       '<div class="modal-header"><h2 id="bet-form-title" class="modal-title">' + esc(title) + "</h2></div>" +
       '<div class="modal-body">' +
         '<form id="bet-form" novalidate>' +
-          betFormFieldsHTML(bet) +
+          betFormFieldsHTML(displayValues) +
         "</form>" +
       "</div>" +
       '<div class="modal-footer">' +
@@ -798,7 +984,10 @@
       initialFocusSelector: "#f-title",
       onMount: function (dialog) {
         wireLiveSignal(dialog);
-        dialog.querySelector('[data-action="modal-cancel"]').addEventListener("click", ui.closeModal);
+        dialog.querySelector('[data-action="modal-cancel"]').addEventListener("click", function () {
+          pendingEvidenceGateData = null;
+          ui.closeModal();
+        });
         dialog.querySelector("#bet-form").addEventListener("submit", function (e) {
           e.preventDefault();
           submitBetForm(dialog, bet);
@@ -876,14 +1065,23 @@
         createdAt: now,
         updatedAt: now,
         activatedAt: null,
-        lastReviewedAt: null
+        lastReviewedAt: null,
+        readiness: null,
+        rawIdeaText: "",
+        evidenceAudit: null
       };
+      if (pendingEvidenceGateData) {
+        newBet.readiness = pendingEvidenceGateData.readiness || null;
+        newBet.rawIdeaText = pendingEvidenceGateData.rawIdeaText || "";
+        newBet.evidenceAudit = pendingEvidenceGateData.evidenceAudit || null;
+        pendingEvidenceGateData = null;
+      }
       newBet.priorityScore = calc.calcDecisionSignal(newBet);
       state.bets.push(newBet);
       persist();
       ui.closeModal();
       navigate("#bet/" + newBet.id);
-      ui.showToast("Bet added.");
+      ui.showToast(newBet.readiness ? "Bet added from Evidence Gate." : "Bet added.");
     }
   }
 
