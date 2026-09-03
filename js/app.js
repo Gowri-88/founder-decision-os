@@ -175,7 +175,7 @@
       '<article class="card bet-card">' +
         '<div class="bet-card__top">' +
           '<h3 class="bet-card__title">' + esc(bet.title || "Untitled bet") + "</h3>" +
-          ui.statusBadgeHTML(bet.status) +
+          '<span class="bet-card__badges">' + ui.statusBadgeHTML(bet.status) + readinessBadgeHTML(bet.readiness) + "</span>" +
         "</div>" +
         '<div class="bet-card__meta">' +
           '<span>Signal: <strong>' + bet.priorityScore + "</strong></span>" +
@@ -717,9 +717,9 @@
     if (currentGateAnalysis) {
       var a = currentGateAnalysis;
       var readinessLabel = a.suggestedReadiness === "delivery"
-        ? "Evidence present — looks closer to delivery-ready"
-        : "Little or no evidence — looks like it needs discovery first";
-      var readinessBadgeClass = a.suggestedReadiness === "delivery" ? "active" : "idea";
+        ? "Numbers/customer language found — verify before treating as evidence"
+        : "Little or no evidence detected — starts as a discovery question";
+      var readinessBadgeClass = a.suggestedReadiness === "delivery" ? "watch" : "idea";
 
       analysisHTML =
         '<section class="section">' +

@@ -35,7 +35,8 @@
   var OUTCOME_TRIGGERS = [
     "will ", "to increase", "to improve", "to reduce", "to boost",
     "to grow", "leads to", "leading to", "results in", "so that", "improve ",
-    "increase ", "reduce ", "boost "
+    "increase ", "reduce ", "boost ", "would be", "would result", "would lead",
+    "outcome would", "outcome is", "outcome:"
   ];
 
   var CATEGORY_RULES = [
